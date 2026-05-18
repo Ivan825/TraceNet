@@ -41,7 +41,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            writeUnauthorized(response, "Missing or invalid Authorization header");
+            writeError(response, HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized", "Missing or invalid Authorization header");
             return;
         }
 
@@ -55,6 +55,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String orgId = String.valueOf(claims.get("orgId"));
             String role = String.valueOf(claims.get("role"));
 
+            if (!isAllowed(request.getRequestURI(), role)) {
+                writeError(response, HttpServletResponse.SC_FORBIDDEN, "Forbidden", "Role is not allowed to access this resource");
+                return;
+            }
+
             Map<String, String> headersToAdd = new LinkedHashMap<>();
             headersToAdd.put("X-User-Id", userId);
             headersToAdd.put("X-User-Email", email);
@@ -67,21 +72,44 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             filterChain.doFilter(wrappedRequest, response);
 
         } catch (Exception e) {
-            writeUnauthorized(response, "Invalid or expired token");
+            writeError(response, HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized", "Invalid or expired token");
         }
     }
 
-    private void writeUnauthorized(HttpServletResponse response, String message) throws IOException {
-        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+    private boolean isAllowed(String path, String role) {
+        if (role == null) {
+            return false;
+        }
+
+        String normalizedRole = role.toUpperCase(Locale.ROOT);
+
+        if (path.startsWith("/api/query/")) {
+            return Set.of("ADMIN", "SRE", "DEVELOPER", "VIEWER").contains(normalizedRole);
+        }
+
+        if (path.startsWith("/api/traces/")) {
+            return Set.of("ADMIN", "SRE").contains(normalizedRole);
+        }
+
+        return true;
+    }
+
+    private void writeError(
+            HttpServletResponse response,
+            int status,
+            String error,
+            String message
+    ) throws IOException {
+        response.setStatus(status);
         response.setContentType("application/json");
 
         response.getWriter().write("""
                 {
-                  "status": 401,
-                  "error": "Unauthorized",
+                  "status": %d,
+                  "error": "%s",
                   "message": "%s"
                 }
-                """.formatted(message));
+                """.formatted(status, error, message));
     }
 
     private static class HeaderMapRequestWrapper extends HttpServletRequestWrapper {
