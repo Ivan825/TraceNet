@@ -1,5 +1,6 @@
 package com.tracenet.demoinventoryservice.controller;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
@@ -11,6 +12,9 @@ import java.util.Map;
 public class InventoryController {
 
     private final RestTemplate restTemplate = new RestTemplate();
+
+    @Value("${trace.ingestion.url}")
+    private String traceIngestionUrl;
 
     @PostMapping("/reserve")
     public Map<String, Object> reserveInventory(
@@ -48,6 +52,7 @@ public class InventoryController {
     ) {
         Map<String, Object> span = new LinkedHashMap<>();
         span.put("traceId", traceId);
+        span.put("orgId", "org-demo");
         span.put("serviceName", "demo-inventory-service");
         span.put("endpoint", endpoint);
         span.put("httpMethod", httpMethod);
@@ -57,7 +62,7 @@ public class InventoryController {
 
         try {
             restTemplate.postForObject(
-                    "http://localhost:8085/traces/spans",
+                    traceIngestionUrl + "/traces/spans",
                     span,
                     Map.class
             );

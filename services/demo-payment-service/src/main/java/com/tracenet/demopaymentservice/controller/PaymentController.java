@@ -1,5 +1,6 @@
 package com.tracenet.demopaymentservice.controller;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
@@ -12,6 +13,9 @@ import java.util.Map;
 public class PaymentController {
 
     private final RestTemplate restTemplate = new RestTemplate();
+
+    @Value("${trace.ingestion.url}")
+    private String traceIngestionUrl;
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> makePayment(
@@ -100,6 +104,7 @@ public class PaymentController {
     ) {
         Map<String, Object> span = new LinkedHashMap<>();
         span.put("traceId", traceId);
+        span.put("orgId", "org-demo");
         span.put("serviceName", "demo-payment-service");
         span.put("endpoint", endpoint);
         span.put("httpMethod", httpMethod);
@@ -109,7 +114,7 @@ public class PaymentController {
 
         try {
             restTemplate.postForObject(
-                    "http://localhost:8085/traces/spans",
+                    traceIngestionUrl + "/traces/spans",
                     span,
                     Map.class
             );

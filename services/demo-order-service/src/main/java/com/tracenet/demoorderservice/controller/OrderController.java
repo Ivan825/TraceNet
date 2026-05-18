@@ -1,5 +1,6 @@
 package com.tracenet.demoorderservice.controller;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.HttpServerErrorException;
@@ -14,6 +15,15 @@ import java.util.UUID;
 public class OrderController {
 
     private final RestTemplate restTemplate = new RestTemplate();
+
+    @Value("${payment.service.url}")
+    private String paymentServiceUrl;
+
+    @Value("${inventory.service.url}")
+    private String inventoryServiceUrl;
+
+    @Value("${trace.ingestion.url}")
+    private String traceIngestionUrl;
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> createOrder(
@@ -33,7 +43,7 @@ public class OrderController {
 
             HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
 
-            String paymentUrl = "http://localhost:8083/payments"
+            String paymentUrl = paymentServiceUrl + "/payments"
                     + "?fail=" + paymentFail
                     + "&delayMs=" + paymentDelayMs;
 
@@ -45,7 +55,7 @@ public class OrderController {
             );
 
             ResponseEntity<Map> inventoryResponse = restTemplate.exchange(
-                    "http://localhost:8084/inventory/reserve",
+                    inventoryServiceUrl + "/inventory/reserve",
                     HttpMethod.POST,
                     requestEntity,
                     Map.class
@@ -121,6 +131,7 @@ public class OrderController {
     ) {
         Map<String, Object> span = new LinkedHashMap<>();
         span.put("traceId", traceId);
+        span.put("orgId", "org-demo");
         span.put("serviceName", "demo-order-service");
         span.put("endpoint", endpoint);
         span.put("httpMethod", httpMethod);
@@ -130,7 +141,7 @@ public class OrderController {
 
         try {
             restTemplate.postForObject(
-                    "http://localhost:8085/traces/spans",
+                    traceIngestionUrl + "/traces/spans",
                     span,
                     Map.class
             );
