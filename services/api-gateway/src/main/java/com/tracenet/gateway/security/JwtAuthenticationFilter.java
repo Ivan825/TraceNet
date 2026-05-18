@@ -41,7 +41,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            writeError(response, HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized", "Missing or invalid Authorization header");
+            writeError(
+                    response,
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Unauthorized",
+                    "Missing or invalid Authorization header"
+            );
             return;
         }
 
@@ -55,8 +60,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String orgId = String.valueOf(claims.get("orgId"));
             String role = String.valueOf(claims.get("role"));
 
-            if (!isAllowed(request.getRequestURI(), role)) {
-                writeError(response, HttpServletResponse.SC_FORBIDDEN, "Forbidden", "Role is not allowed to access this resource");
+            List<String> permissions = extractPermissions(claims);
+
+            if (!isAllowed(request.getRequestURI(), permissions)) {
+                writeError(
+                        response,
+                        HttpServletResponse.SC_FORBIDDEN,
+                        "Forbidden",
+                        "User does not have required permission for this resource"
+                );
                 return;
             }
 
@@ -65,6 +77,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             headersToAdd.put("X-User-Email", email);
             headersToAdd.put("X-Org-Id", orgId);
             headersToAdd.put("X-Role", role);
+            headersToAdd.put("X-Permissions", String.join(",", permissions));
 
             HeaderMapRequestWrapper wrappedRequest =
                     new HeaderMapRequestWrapper(request, headersToAdd);
@@ -72,23 +85,41 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             filterChain.doFilter(wrappedRequest, response);
 
         } catch (Exception e) {
-            writeError(response, HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized", "Invalid or expired token");
+            writeError(
+                    response,
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Unauthorized",
+                    "Invalid or expired token"
+            );
         }
     }
 
-    private boolean isAllowed(String path, String role) {
-        if (role == null) {
-            return false;
+    private List<String> extractPermissions(Claims claims) {
+        Object rawPermissions = claims.get("permissions");
+
+        if (rawPermissions == null) {
+            return List.of();
         }
 
-        String normalizedRole = role.toUpperCase(Locale.ROOT);
+        if (rawPermissions instanceof List<?> permissionList) {
+            return permissionList.stream()
+                    .map(String::valueOf)
+                    .map(permission -> permission.toUpperCase(Locale.ROOT))
+                    .toList();
+        }
+
+        return List.of();
+    }
+
+    private boolean isAllowed(String path, List<String> permissions) {
+        Set<String> permissionSet = new HashSet<>(permissions);
 
         if (path.startsWith("/api/query/")) {
-            return Set.of("ADMIN", "SRE", "DEVELOPER", "VIEWER").contains(normalizedRole);
+            return permissionSet.contains("VIEW_TRACES");
         }
 
         if (path.startsWith("/api/traces/")) {
-            return Set.of("ADMIN", "SRE").contains(normalizedRole);
+            return permissionSet.contains("INGEST_TRACES");
         }
 
         return true;

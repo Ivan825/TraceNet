@@ -1,5 +1,7 @@
 package com.tracenet.auth.dto;
 
+import java.util.List;
+
 public class AuthResponse {
 
     private String token;
@@ -8,14 +10,23 @@ public class AuthResponse {
     private String email;
     private String orgId;
     private String role;
+    private List<String> permissions;
 
-    public AuthResponse(String token, String userId, String email, String orgId, String role) {
+    public AuthResponse(
+            String token,
+            String userId,
+            String email,
+            String orgId,
+            String role,
+            List<String> permissions
+    ) {
         this.token = token;
         this.tokenType = "Bearer";
         this.userId = userId;
         this.email = email;
         this.orgId = orgId;
         this.role = role;
+        this.permissions = permissions;
     }
 
     public String getToken() {
@@ -40,5 +51,9 @@ public class AuthResponse {
 
     public String getRole() {
         return role;
+    }
+
+    public List<String> getPermissions() {
+        return permissions;
     }
 }

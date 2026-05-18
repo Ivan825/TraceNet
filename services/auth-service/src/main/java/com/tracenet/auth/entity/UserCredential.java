@@ -25,17 +25,29 @@ public class UserCredential {
     @Column(nullable = false)
     private String role;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "role_id")
+    private Role roleEntity;
+
     @Column(nullable = false)
     private Instant createdAt;
 
     public UserCredential() {
     }
 
-    public UserCredential(String email, String passwordHash, String orgId, String role, Instant createdAt) {
+    public UserCredential(
+            String email,
+            String passwordHash,
+            String orgId,
+            String role,
+            Role roleEntity,
+            Instant createdAt
+    ) {
         this.email = email;
         this.passwordHash = passwordHash;
         this.orgId = orgId;
         this.role = role;
+        this.roleEntity = roleEntity;
         this.createdAt = createdAt;
     }
 
@@ -59,6 +71,10 @@ public class UserCredential {
         return role;
     }
 
+    public Role getRoleEntity() {
+        return roleEntity;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -77,6 +93,10 @@ public class UserCredential {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public void setRoleEntity(Role roleEntity) {
+        this.roleEntity = roleEntity;
     }
 
     public void setCreatedAt(Instant createdAt) {
