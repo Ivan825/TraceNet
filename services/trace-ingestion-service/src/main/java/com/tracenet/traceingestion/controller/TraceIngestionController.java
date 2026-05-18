@@ -1,58 +1,74 @@
 package com.tracenet.traceingestion.controller;
 
 import com.tracenet.traceingestion.dto.TraceSpanRequest;
+import com.tracenet.traceingestion.entity.TraceSpan;
+import com.tracenet.traceingestion.repository.TraceSpanRepository;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 @RestController
 @RequestMapping("/traces")
 public class TraceIngestionController {
 
-    private final List<Map<String, Object>> spans = new CopyOnWriteArrayList<>();
+    private final TraceSpanRepository traceSpanRepository;
+
+    public TraceIngestionController(TraceSpanRepository traceSpanRepository) {
+        this.traceSpanRepository = traceSpanRepository;
+    }
 
     @PostMapping("/spans")
     public Map<String, Object> ingestSpan(@RequestBody TraceSpanRequest request) {
-        Map<String, Object> span = new LinkedHashMap<>();
-
-        span.put("id", UUID.randomUUID().toString());
-        span.put("traceId", request.getTraceId());
-        span.put("serviceName", request.getServiceName());
-        span.put("endpoint", request.getEndpoint());
-        span.put("httpMethod", request.getHttpMethod());
-        span.put("statusCode", request.getStatusCode());
-        span.put("latencyMs", request.getLatencyMs());
-        span.put("errorMessage", request.getErrorMessage());
-        span.put("createdAt", Instant.now().toString());
-
-        spans.add(span);
-
-        return Map.of(
-                "message", "Trace span ingested successfully",
-                "traceId", request.getTraceId(),
-                "serviceName", request.getServiceName()
+        TraceSpan span = new TraceSpan(
+                request.getTraceId(),
+                request.getServiceName(),
+                request.getEndpoint(),
+                request.getHttpMethod(),
+                request.getStatusCode(),
+                request.getLatencyMs(),
+                request.getErrorMessage(),
+                Instant.now()
         );
+
+        TraceSpan savedSpan = traceSpanRepository.save(span);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("message", "Trace span ingested successfully");
+        response.put("id", savedSpan.getId());
+        response.put("traceId", savedSpan.getTraceId());
+        response.put("serviceName", savedSpan.getServiceName());
+
+        return response;
     }
 
     @GetMapping("/spans")
     public List<Map<String, Object>> getAllSpans() {
-        return spans;
+        return traceSpanRepository.findAll()
+                .stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     @GetMapping("/{traceId}")
     public List<Map<String, Object>> getSpansByTraceId(@PathVariable String traceId) {
-        return spans.stream()
-                .filter(span -> traceId.equals(span.get("traceId")))
+        return traceSpanRepository.findByTraceIdOrderByCreatedAtAsc(traceId)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @GetMapping("/errors")
+    public List<Map<String, Object>> getErrorSpans() {
+        return traceSpanRepository.findByStatusCodeGreaterThanEqualOrderByCreatedAtDesc(500)
+                .stream()
+                .map(this::toResponse)
                 .toList();
     }
 
     @GetMapping("/{traceId}/summary")
     public Map<String, Object> getTraceSummary(@PathVariable String traceId) {
-        List<Map<String, Object>> traceSpans = spans.stream()
-                .filter(span -> traceId.equals(span.get("traceId")))
-                .toList();
+        List<TraceSpan> traceSpans = traceSpanRepository.findByTraceIdOrderByCreatedAtAsc(traceId);
 
         if (traceSpans.isEmpty()) {
             Map<String, Object> response = new LinkedHashMap<>();
@@ -74,16 +90,16 @@ public class TraceIngestionController {
         int successCount = 0;
         int failureCount = 0;
 
-        for (Map<String, Object> span : traceSpans) {
-            int statusCode = toInt(span.get("statusCode"));
-            long latencyMs = toLong(span.get("latencyMs"));
+        for (TraceSpan span : traceSpans) {
+            int statusCode = span.getStatusCode();
+            long latencyMs = span.getLatencyMs();
 
             totalLatencyMs += latencyMs;
 
             if (latencyMs > maxLatencyMs) {
                 maxLatencyMs = latencyMs;
-                slowestService = String.valueOf(span.get("serviceName"));
-                slowestEndpoint = String.valueOf(span.get("endpoint"));
+                slowestService = span.getServiceName();
+                slowestEndpoint = span.getEndpoint();
             }
 
             if (statusCode >= 500) {
@@ -91,10 +107,10 @@ public class TraceIngestionController {
 
                 if (!hasFailure) {
                     hasFailure = true;
-                    rootCauseService = String.valueOf(span.get("serviceName"));
-                    rootCauseError = span.get("errorMessage") == null
+                    rootCauseService = span.getServiceName();
+                    rootCauseError = span.getErrorMessage() == null
                             ? "No error message available"
-                            : String.valueOf(span.get("errorMessage"));
+                            : span.getErrorMessage();
                 }
             } else {
                 successCount++;
@@ -124,6 +140,20 @@ public class TraceIngestionController {
         return summary;
     }
 
+    private Map<String, Object> toResponse(TraceSpan span) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("id", span.getId());
+        response.put("traceId", span.getTraceId());
+        response.put("serviceName", span.getServiceName());
+        response.put("endpoint", span.getEndpoint());
+        response.put("httpMethod", span.getHttpMethod());
+        response.put("statusCode", span.getStatusCode());
+        response.put("latencyMs", span.getLatencyMs());
+        response.put("errorMessage", span.getErrorMessage());
+        response.put("createdAt", span.getCreatedAt());
+        return response;
+    }
+
     private String buildDiagnosis(
             boolean hasFailure,
             String rootCauseService,
@@ -144,37 +174,5 @@ public class TraceIngestionController {
         }
 
         return "Request completed successfully with no detected service failure.";
-    }
-
-    private int toInt(Object value) {
-        if (value == null) {
-            return 0;
-        }
-
-        if (value instanceof Integer integerValue) {
-            return integerValue;
-        }
-
-        if (value instanceof Number numberValue) {
-            return numberValue.intValue();
-        }
-
-        return Integer.parseInt(String.valueOf(value));
-    }
-
-    private long toLong(Object value) {
-        if (value == null) {
-            return 0L;
-        }
-
-        if (value instanceof Long longValue) {
-            return longValue;
-        }
-
-        if (value instanceof Number numberValue) {
-            return numberValue.longValue();
-        }
-
-        return Long.parseLong(String.valueOf(value));
     }
 }
