@@ -47,4 +47,134 @@ public class TraceIngestionController {
                 .filter(span -> traceId.equals(span.get("traceId")))
                 .toList();
     }
+
+    @GetMapping("/{traceId}/summary")
+    public Map<String, Object> getTraceSummary(@PathVariable String traceId) {
+        List<Map<String, Object>> traceSpans = spans.stream()
+                .filter(span -> traceId.equals(span.get("traceId")))
+                .toList();
+
+        if (traceSpans.isEmpty()) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("traceId", traceId);
+            response.put("status", "NOT_FOUND");
+            response.put("message", "No spans found for this traceId");
+            return response;
+        }
+
+        boolean hasFailure = false;
+        String rootCauseService = null;
+        String rootCauseError = null;
+
+        String slowestService = null;
+        String slowestEndpoint = null;
+        long maxLatencyMs = -1L;
+
+        long totalLatencyMs = 0L;
+        int successCount = 0;
+        int failureCount = 0;
+
+        for (Map<String, Object> span : traceSpans) {
+            int statusCode = toInt(span.get("statusCode"));
+            long latencyMs = toLong(span.get("latencyMs"));
+
+            totalLatencyMs += latencyMs;
+
+            if (latencyMs > maxLatencyMs) {
+                maxLatencyMs = latencyMs;
+                slowestService = String.valueOf(span.get("serviceName"));
+                slowestEndpoint = String.valueOf(span.get("endpoint"));
+            }
+
+            if (statusCode >= 500) {
+                failureCount++;
+
+                if (!hasFailure) {
+                    hasFailure = true;
+                    rootCauseService = String.valueOf(span.get("serviceName"));
+                    rootCauseError = span.get("errorMessage") == null
+                            ? "No error message available"
+                            : String.valueOf(span.get("errorMessage"));
+                }
+            } else {
+                successCount++;
+            }
+        }
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("traceId", traceId);
+        summary.put("status", hasFailure ? "FAILED" : "SUCCESS");
+        summary.put("totalSpans", traceSpans.size());
+        summary.put("successCount", successCount);
+        summary.put("failureCount", failureCount);
+        summary.put("rootCauseService", hasFailure ? rootCauseService : null);
+        summary.put("rootCauseError", hasFailure ? rootCauseError : null);
+        summary.put("slowestService", slowestService);
+        summary.put("slowestEndpoint", slowestEndpoint);
+        summary.put("maxLatencyMs", maxLatencyMs);
+        summary.put("totalLatencyMs", totalLatencyMs);
+        summary.put("diagnosis", buildDiagnosis(
+                hasFailure,
+                rootCauseService,
+                rootCauseError,
+                slowestService,
+                maxLatencyMs
+        ));
+
+        return summary;
+    }
+
+    private String buildDiagnosis(
+            boolean hasFailure,
+            String rootCauseService,
+            String rootCauseError,
+            String slowestService,
+            long maxLatencyMs
+    ) {
+        if (hasFailure) {
+            return "Request failed because " + rootCauseService + " returned an error: " + rootCauseError;
+        }
+
+        if (maxLatencyMs >= 1000) {
+            return "Request succeeded but was slow. Slowest service was "
+                    + slowestService
+                    + " with latency "
+                    + maxLatencyMs
+                    + " ms.";
+        }
+
+        return "Request completed successfully with no detected service failure.";
+    }
+
+    private int toInt(Object value) {
+        if (value == null) {
+            return 0;
+        }
+
+        if (value instanceof Integer integerValue) {
+            return integerValue;
+        }
+
+        if (value instanceof Number numberValue) {
+            return numberValue.intValue();
+        }
+
+        return Integer.parseInt(String.valueOf(value));
+    }
+
+    private long toLong(Object value) {
+        if (value == null) {
+            return 0L;
+        }
+
+        if (value instanceof Long longValue) {
+            return longValue;
+        }
+
+        if (value instanceof Number numberValue) {
+            return numberValue.longValue();
+        }
+
+        return Long.parseLong(String.valueOf(value));
+    }
 }
