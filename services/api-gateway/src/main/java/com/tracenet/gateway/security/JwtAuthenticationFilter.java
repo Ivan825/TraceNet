@@ -112,22 +112,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     private boolean isAllowed(String path, List<String> permissions) {
-            Set<String> permissionSet = new HashSet<>(permissions);
+        Set<String> permissionSet = new HashSet<>(permissions);
 
-            if (path.startsWith("/api/query/")) {
-                return permissionSet.contains("VIEW_TRACES");
-            }
-
-            if (path.startsWith("/api/analytics/")) {
-                return permissionSet.contains("VIEW_TRACES");
-            }
-
-            if (path.startsWith("/api/traces/")) {
-                return permissionSet.contains("INGEST_TRACES");
-            }
-
-            return true;
+        if (path.startsWith("/api/query/")) {
+            return permissionSet.contains("VIEW_TRACES");
         }
+
+        if (path.startsWith("/api/analytics/")) {
+            return permissionSet.contains("VIEW_TRACES");
+        }
+
+        if (path.startsWith("/api/alerts")) {
+            return permissionSet.contains("MANAGE_ALERTS");
+        }
+
+        if (path.startsWith("/api/traces/")) {
+            return permissionSet.contains("INGEST_TRACES");
+        }
+
+        return true;
+    }
 
     private void writeError(
             HttpServletResponse response,
