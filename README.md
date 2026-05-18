@@ -1675,18 +1675,3 @@ Trace generation smoke test
 Analytics smoke test
 ```
 
-This makes TraceNet a deployable, CI/CD-ready microservices project instead of only a locally-run Spring Boot application.
-
----
-
-## Resume Description for Docker and Jenkins Work
-
-```text
-Containerized all TraceNet microservices using Docker and orchestrated the full platform with Docker Compose, including PostgreSQL, API Gateway, auth, trace ingestion, query, analytics, alerting, and demo services.
-
-Implemented Docker-friendly environment configuration for service discovery, database connectivity, and inter-service communication across containers.
-
-Created a Jenkins CI/CD pipeline to build all Maven services, build Docker images, start the Compose stack, and run health and smoke tests for authentication, trace generation, and analytics.
-
-Added a local CI build script to validate all services and Docker images before pushing changes to GitHub.
-```
