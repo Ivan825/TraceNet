@@ -1,5 +1,6 @@
 package com.tracenet.demopaymentservice.controller;
 
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
@@ -13,28 +14,79 @@ public class PaymentController {
     private final RestTemplate restTemplate = new RestTemplate();
 
     @PostMapping
-    public Map<String, Object> makePayment(
-            @RequestHeader(value = "X-Trace-Id", required = false) String traceId
+    public ResponseEntity<Map<String, Object>> makePayment(
+            @RequestHeader(value = "X-Trace-Id", required = false) String traceId,
+            @RequestParam(value = "fail", defaultValue = "false") boolean fail,
+            @RequestParam(value = "delayMs", defaultValue = "0") long delayMs
     ) {
         long startTime = System.currentTimeMillis();
 
         try {
+            if (delayMs > 0) {
+                Thread.sleep(delayMs);
+            }
+
+            if (fail) {
+                long latencyMs = System.currentTimeMillis() - startTime;
+
+                sendTraceSpan(
+                        traceId,
+                        "/payments",
+                        "POST",
+                        500,
+                        latencyMs,
+                        "Simulated payment failure"
+                );
+
+                Map<String, Object> errorResponse = new LinkedHashMap<>();
+                errorResponse.put("service", "demo-payment-service");
+                errorResponse.put("status", "PAYMENT_FAILED");
+                errorResponse.put("traceId", traceId);
+                errorResponse.put("errorMessage", "Simulated payment failure");
+
+                return ResponseEntity.status(500).body(errorResponse);
+            }
+
+            long latencyMs = System.currentTimeMillis() - startTime;
+
+            sendTraceSpan(
+                    traceId,
+                    "/payments",
+                    "POST",
+                    200,
+                    latencyMs,
+                    null
+            );
+
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("service", "demo-payment-service");
             response.put("status", "PAYMENT_SUCCESS");
             response.put("traceId", traceId);
+            response.put("latencyMs", latencyMs);
+
+            return ResponseEntity.ok(response);
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
 
             long latencyMs = System.currentTimeMillis() - startTime;
 
-            sendTraceSpan(traceId, "/payments", "POST", 200, latencyMs, null);
+            sendTraceSpan(
+                    traceId,
+                    "/payments",
+                    "POST",
+                    500,
+                    latencyMs,
+                    "Payment delay interrupted"
+            );
 
-            return response;
-        } catch (Exception e) {
-            long latencyMs = System.currentTimeMillis() - startTime;
+            Map<String, Object> errorResponse = new LinkedHashMap<>();
+            errorResponse.put("service", "demo-payment-service");
+            errorResponse.put("status", "PAYMENT_INTERRUPTED");
+            errorResponse.put("traceId", traceId);
+            errorResponse.put("errorMessage", "Payment delay interrupted");
 
-            sendTraceSpan(traceId, "/payments", "POST", 500, latencyMs, e.getMessage());
-
-            throw e;
+            return ResponseEntity.status(500).body(errorResponse);
         }
     }
 

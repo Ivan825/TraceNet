@@ -2,6 +2,7 @@ package com.tracenet.demoorderservice.controller;
 
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.LinkedHashMap;
@@ -15,8 +16,10 @@ public class OrderController {
     private final RestTemplate restTemplate = new RestTemplate();
 
     @PostMapping
-    public Map<String, Object> createOrder(
-            @RequestHeader(value = "X-Trace-Id", required = false) String traceId
+    public ResponseEntity<Map<String, Object>> createOrder(
+            @RequestHeader(value = "X-Trace-Id", required = false) String traceId,
+            @RequestParam(value = "paymentFail", defaultValue = "false") boolean paymentFail,
+            @RequestParam(value = "paymentDelayMs", defaultValue = "0") long paymentDelayMs
     ) {
         long startTime = System.currentTimeMillis();
 
@@ -30,8 +33,12 @@ public class OrderController {
 
             HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
 
+            String paymentUrl = "http://localhost:8083/payments"
+                    + "?fail=" + paymentFail
+                    + "&delayMs=" + paymentDelayMs;
+
             ResponseEntity<Map> paymentResponse = restTemplate.exchange(
-                    "http://localhost:8083/payments",
+                    paymentUrl,
                     HttpMethod.POST,
                     requestEntity,
                     Map.class
@@ -54,14 +61,53 @@ public class OrderController {
             response.put("traceId", traceId);
             response.put("payment", paymentResponse.getBody());
             response.put("inventory", inventoryResponse.getBody());
+            response.put("latencyMs", latencyMs);
 
-            return response;
+            return ResponseEntity.ok(response);
+
+        } catch (HttpServerErrorException e) {
+            long latencyMs = System.currentTimeMillis() - startTime;
+
+            sendTraceSpan(
+                    traceId,
+                    "/orders",
+                    "POST",
+                    500,
+                    latencyMs,
+                    "Order failed because downstream service failed: " + e.getResponseBodyAsString()
+            );
+
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("service", "demo-order-service");
+            response.put("status", "ORDER_FAILED");
+            response.put("traceId", traceId);
+            response.put("rootCause", "demo-payment-service");
+            response.put("errorMessage", "Payment service failed");
+            response.put("downstreamError", e.getResponseBodyAsString());
+            response.put("latencyMs", latencyMs);
+
+            return ResponseEntity.status(500).body(response);
+
         } catch (Exception e) {
             long latencyMs = System.currentTimeMillis() - startTime;
 
-            sendTraceSpan(traceId, "/orders", "POST", 500, latencyMs, e.getMessage());
+            sendTraceSpan(
+                    traceId,
+                    "/orders",
+                    "POST",
+                    500,
+                    latencyMs,
+                    e.getMessage()
+            );
 
-            throw e;
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("service", "demo-order-service");
+            response.put("status", "ORDER_FAILED");
+            response.put("traceId", traceId);
+            response.put("errorMessage", e.getMessage());
+            response.put("latencyMs", latencyMs);
+
+            return ResponseEntity.status(500).body(response);
         }
     }
 
