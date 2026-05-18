@@ -4,12 +4,14 @@ import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.*;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -53,12 +55,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String orgId = String.valueOf(claims.get("orgId"));
             String role = String.valueOf(claims.get("role"));
 
-            response.setHeader("X-User-Id", userId);
-            response.setHeader("X-User-Email", email);
-            response.setHeader("X-Org-Id", orgId);
-            response.setHeader("X-Role", role);
+            Map<String, String> headersToAdd = new LinkedHashMap<>();
+            headersToAdd.put("X-User-Id", userId);
+            headersToAdd.put("X-User-Email", email);
+            headersToAdd.put("X-Org-Id", orgId);
+            headersToAdd.put("X-Role", role);
 
-            filterChain.doFilter(request, response);
+            HeaderMapRequestWrapper wrappedRequest =
+                    new HeaderMapRequestWrapper(request, headersToAdd);
+
+            filterChain.doFilter(wrappedRequest, response);
 
         } catch (Exception e) {
             writeUnauthorized(response, "Invalid or expired token");
@@ -76,5 +82,55 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                   "message": "%s"
                 }
                 """.formatted(message));
+    }
+
+    private static class HeaderMapRequestWrapper extends HttpServletRequestWrapper {
+
+        private final Map<String, String> customHeaders;
+
+        HeaderMapRequestWrapper(HttpServletRequest request, Map<String, String> customHeaders) {
+            super(request);
+            this.customHeaders = new LinkedHashMap<>();
+
+            for (Map.Entry<String, String> entry : customHeaders.entrySet()) {
+                this.customHeaders.put(entry.getKey().toLowerCase(Locale.ROOT), entry.getValue());
+            }
+        }
+
+        @Override
+        public String getHeader(String name) {
+            String customHeaderValue = customHeaders.get(name.toLowerCase(Locale.ROOT));
+
+            if (customHeaderValue != null) {
+                return customHeaderValue;
+            }
+
+            return super.getHeader(name);
+        }
+
+        @Override
+        public Enumeration<String> getHeaders(String name) {
+            String customHeaderValue = customHeaders.get(name.toLowerCase(Locale.ROOT));
+
+            if (customHeaderValue != null) {
+                return Collections.enumeration(List.of(customHeaderValue));
+            }
+
+            return super.getHeaders(name);
+        }
+
+        @Override
+        public Enumeration<String> getHeaderNames() {
+            Set<String> headerNames = new LinkedHashSet<>();
+
+            Enumeration<String> existingHeaderNames = super.getHeaderNames();
+            while (existingHeaderNames.hasMoreElements()) {
+                headerNames.add(existingHeaderNames.nextElement());
+            }
+
+            headerNames.addAll(customHeaders.keySet());
+
+            return Collections.enumeration(headerNames);
+        }
     }
 }
