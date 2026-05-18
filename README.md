@@ -1018,3 +1018,675 @@ Expected:
 
 
 
+# TraceNet Docker and Jenkins Work Summary
+
+## Docker Compose Setup
+
+TraceNet was containerized using Docker and Docker Compose so that the complete platform can be started from the project root using one command instead of manually running every Spring Boot service in separate terminals.
+
+The Docker setup includes the following containers:
+
+```text
+postgres
+api-gateway
+auth-service
+trace-ingestion-service
+trace-query-service
+analytics-service
+alert-service
+demo-order-service
+demo-payment-service
+demo-inventory-service
+```
+
+The Dockerized architecture allows the TraceNet product services and demo services to run together on a shared Docker network. Service-to-service communication no longer depends on `localhost`; instead, each service talks to other services using Docker service names such as `postgres`, `auth-service`, `trace-ingestion-service`, `trace-query-service`, `analytics-service`, and `alert-service`.
+
+---
+
+## Dockerfiles
+
+A Dockerfile was added to every Spring Boot service folder.
+
+Services with Dockerfiles:
+
+```text
+services/api-gateway/Dockerfile
+services/auth-service/Dockerfile
+services/trace-ingestion-service/Dockerfile
+services/trace-query-service/Dockerfile
+services/analytics-service/Dockerfile
+services/alert-service/Dockerfile
+services/demo-order-service/Dockerfile
+services/demo-payment-service/Dockerfile
+services/demo-inventory-service/Dockerfile
+```
+
+Each Dockerfile follows a multi-stage build pattern:
+
+```text
+Stage 1: Maven build using Java 21
+Stage 2: Lightweight Java runtime image
+```
+
+The Maven stage builds the Spring Boot JAR using:
+
+```bash
+mvn clean package -DskipTests
+```
+
+The runtime stage copies the generated JAR and runs it using:
+
+```bash
+java -jar app.jar
+```
+
+This keeps the runtime container cleaner than running the full Maven build environment in production mode.
+
+---
+
+## Docker Compose File
+
+A root-level `docker-compose.yml` file was created to orchestrate the complete TraceNet platform.
+
+The Compose file defines:
+
+```text
+PostgreSQL database container
+Auth service container
+API Gateway container
+Trace ingestion service container
+Trace query service container
+Analytics service container
+Alert service container
+Demo order service container
+Demo payment service container
+Demo inventory service container
+Shared PostgreSQL volume
+Database initialization script
+Service dependencies
+Container networking
+Environment variables
+Port mappings
+```
+
+The main command to build and start everything is:
+
+```bash
+docker compose up --build
+```
+
+For background mode:
+
+```bash
+docker compose up --build -d
+```
+
+To stop the containers but keep database data:
+
+```bash
+docker compose down
+```
+
+To stop containers and remove the PostgreSQL volume:
+
+```bash
+docker compose down -v
+```
+
+---
+
+## PostgreSQL in Docker
+
+A PostgreSQL container was added using the official `postgres:16` image.
+
+The container uses:
+
+```text
+POSTGRES_USER=tracenet
+POSTGRES_PASSWORD=tracenet
+POSTGRES_DB=postgres
+```
+
+A database initialization script was created at:
+
+```text
+docker/postgres/init.sql
+```
+
+The script creates the required TraceNet databases:
+
+```sql
+CREATE DATABASE tracenet_auth_db;
+CREATE DATABASE tracenet_trace_db;
+```
+
+The PostgreSQL data is persisted using a Docker volume:
+
+```text
+tracenet_postgres_data
+```
+
+This ensures data survives normal container restarts. When a clean reset is needed, the volume can be removed using:
+
+```bash
+docker compose down -v
+```
+
+---
+
+## Docker-Friendly Application Properties
+
+The Spring Boot `application.properties` files were updated so services can work both locally and inside Docker.
+
+Instead of hardcoding database URLs such as:
+
+```text
+jdbc:postgresql://localhost:5432/...
+```
+
+services now use environment-variable based configuration:
+
+```properties
+spring.datasource.url=${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/tracenet_trace_db}
+spring.datasource.username=${SPRING_DATASOURCE_USERNAME:ivanbhargava}
+spring.datasource.password=${SPRING_DATASOURCE_PASSWORD:}
+```
+
+This means:
+
+```text
+When running locally, the service uses localhost defaults.
+When running in Docker, Docker Compose injects the correct container URLs.
+```
+
+For example, inside Docker:
+
+```text
+jdbc:postgresql://postgres:5432/tracenet_trace_db
+```
+
+is used instead of:
+
+```text
+jdbc:postgresql://localhost:5432/tracenet_trace_db
+```
+
+---
+
+## Docker Service Networking
+
+The API Gateway was updated to use environment-based service URLs.
+
+Example:
+
+```properties
+AUTH_SERVICE_URL=http://auth-service:8081
+TRACE_INGESTION_SERVICE_URL=http://trace-ingestion-service:8085
+TRACE_QUERY_SERVICE_URL=http://trace-query-service:8086
+ANALYTICS_SERVICE_URL=http://analytics-service:8087
+ALERT_SERVICE_URL=http://alert-service:8088
+```
+
+This allows the gateway container to route traffic to other containers using Docker service names.
+
+The demo services were also updated to use environment-based URLs:
+
+```properties
+PAYMENT_SERVICE_URL=http://demo-payment-service:8083
+INVENTORY_SERVICE_URL=http://demo-inventory-service:8084
+TRACE_INGESTION_URL=http://trace-ingestion-service:8085
+```
+
+This fixed the common Docker issue where `localhost` inside a container refers to the same container, not the host machine or another service.
+
+---
+
+## Demo Services Docker Update
+
+The demo services were made Docker-compatible.
+
+### demo-order-service
+
+The order service now reads downstream service URLs from configuration:
+
+```properties
+payment.service.url=${PAYMENT_SERVICE_URL:http://localhost:8083}
+inventory.service.url=${INVENTORY_SERVICE_URL:http://localhost:8084}
+trace.ingestion.url=${TRACE_INGESTION_URL:http://localhost:8085}
+```
+
+This allows it to call:
+
+```text
+demo-payment-service
+demo-inventory-service
+trace-ingestion-service
+```
+
+inside Docker.
+
+### demo-payment-service
+
+The payment service now reads the trace ingestion URL from:
+
+```properties
+trace.ingestion.url=${TRACE_INGESTION_URL:http://localhost:8085}
+```
+
+### demo-inventory-service
+
+The inventory service also reads the trace ingestion URL from:
+
+```properties
+trace.ingestion.url=${TRACE_INGESTION_URL:http://localhost:8085}
+```
+
+The demo services continue to simulate an external monitored system. They generate trace spans and send them to the TraceNet ingestion service.
+
+---
+
+## Docker Testing Completed
+
+The Dockerized stack was tested end-to-end.
+
+The following flow worked successfully:
+
+```text
+Register SRE user through API Gateway
+Login through API Gateway
+Generate normal order trace
+Generate slow payment trace
+Generate failed payment trace
+Query analytics through API Gateway
+Evaluate alerts through API Gateway
+```
+
+Example successful auth flow:
+
+```bash
+curl -X POST http://localhost:8080/api/auth/register \
+-H "Content-Type: application/json" \
+-d '{
+  "email": "sre@tracenet.com",
+  "password": "password123",
+  "orgId": "org-demo",
+  "role": "SRE"
+}'
+```
+
+The response included a JWT token with the expected role and permissions:
+
+```text
+role=SRE
+permissions=INGEST_TRACES, MANAGE_ALERTS, VIEW_ERRORS, VIEW_SLOW_TRACES, VIEW_TRACES
+```
+
+Example trace generation:
+
+```bash
+curl -X POST http://localhost:8082/orders
+curl -X POST "http://localhost:8082/orders?paymentDelayMs=1500"
+curl -X POST "http://localhost:8082/orders?paymentFail=true"
+```
+
+Example analytics check:
+
+```bash
+curl http://localhost:8080/api/analytics/summary \
+-H "Authorization: Bearer $TOKEN"
+```
+
+The analytics service returned org-scoped metrics such as:
+
+```text
+totalSpans
+successSpans
+failedSpans
+errorRatePercent
+```
+
+Example alert evaluation:
+
+```bash
+curl -X POST http://localhost:8080/api/alerts/evaluate \
+-H "Authorization: Bearer $TOKEN"
+```
+
+The alert service generated alerts for:
+
+```text
+Error rate threshold
+Service p95 latency threshold
+Slow trace detection
+Service failure detection
+```
+
+This confirms that the full Docker Compose environment works across authentication, tracing, analytics, and alerting.
+
+---
+
+## Useful Docker Commands
+
+Start full platform with live logs:
+
+```bash
+docker compose up --build
+```
+
+Start full platform in background:
+
+```bash
+docker compose up --build -d
+```
+
+Check running containers:
+
+```bash
+docker compose ps
+```
+
+View logs for all services:
+
+```bash
+docker compose logs -f
+```
+
+View logs for one service:
+
+```bash
+docker compose logs -f api-gateway
+```
+
+Stop all containers:
+
+```bash
+docker compose down
+```
+
+Stop all containers and remove database volume:
+
+```bash
+docker compose down -v
+```
+
+Rebuild images:
+
+```bash
+docker compose build
+```
+
+Restart one service:
+
+```bash
+docker compose restart api-gateway
+```
+
+---
+
+# Jenkins CI/CD Setup
+
+A root-level `Jenkinsfile` was added to define the CI/CD pipeline for TraceNet.
+
+The Jenkins pipeline is designed to validate the complete backend system automatically.
+
+The pipeline performs:
+
+```text
+Checkout source code
+Verify project folder structure
+Build all Maven services
+Build Docker images using Docker Compose
+Start the TraceNet stack
+Wait for services to initialize
+Check API Gateway health
+Run auth smoke test
+Run trace generation smoke test
+Run analytics smoke test
+Collect Docker container status
+Show logs on failure
+```
+
+---
+
+## Jenkins Pipeline Stages
+
+### 1. Checkout
+
+Jenkins checks out the GitHub repository.
+
+```text
+checkout scm
+```
+
+### 2. Verify Project Structure
+
+The pipeline validates that all required service folders and `docker-compose.yml` exist.
+
+Checked folders:
+
+```text
+services/api-gateway
+services/auth-service
+services/trace-ingestion-service
+services/trace-query-service
+services/analytics-service
+services/alert-service
+services/demo-order-service
+services/demo-payment-service
+services/demo-inventory-service
+```
+
+### 3. Build Maven Services
+
+Each Spring Boot service is built using Maven.
+
+The build command used for each service is:
+
+```bash
+mvn clean package -DskipTests
+```
+
+The Jenkinsfile builds services in parallel to reduce pipeline time.
+
+Services built:
+
+```text
+api-gateway
+auth-service
+trace-ingestion-service
+trace-query-service
+analytics-service
+alert-service
+demo-order-service
+demo-payment-service
+demo-inventory-service
+```
+
+### 4. Docker Compose Build
+
+Jenkins builds all Docker images using:
+
+```bash
+docker compose build
+```
+
+### 5. Start Stack
+
+Jenkins starts the full TraceNet stack using:
+
+```bash
+docker compose up -d
+```
+
+### 6. Wait for Services
+
+The pipeline waits for services to initialize:
+
+```bash
+sleep 45
+```
+
+### 7. Gateway Health Check
+
+The pipeline checks if API Gateway is healthy:
+
+```bash
+curl --fail --silent http://localhost:8080/actuator/health
+```
+
+### 8. Auth Smoke Test
+
+The pipeline registers or logs in a test SRE user through the API Gateway.
+
+It verifies that a JWT token is generated successfully.
+
+### 9. Trace Flow Smoke Test
+
+The pipeline generates a demo trace by calling:
+
+```bash
+curl --fail --silent -X POST http://localhost:8082/orders
+```
+
+Then it checks analytics through the gateway:
+
+```bash
+curl --fail --silent http://localhost:8080/api/analytics/summary \
+-H "Authorization: Bearer $TOKEN"
+```
+
+This confirms that Docker, routing, authentication, trace generation, and analytics are working inside the CI/CD environment.
+
+---
+
+## Local CI Script
+
+A local build script was added at:
+
+```text
+scripts/ci-build.sh
+```
+
+This script is useful for checking the project locally before pushing to GitHub.
+
+It performs:
+
+```text
+Build all Maven services
+Build Docker images using Docker Compose
+```
+
+It does not start the full stack by default.
+
+Run it using:
+
+```bash
+./scripts/ci-build.sh
+```
+
+The local script and Jenkinsfile are different.
+
+```text
+scripts/ci-build.sh
+  - Runs manually on local machine
+  - Builds services
+  - Builds Docker images
+  - Quick local validation before pushing
+
+Jenkinsfile
+  - Runs inside Jenkins
+  - Triggered by Jenkins pipeline
+  - Checks out GitHub code
+  - Builds services
+  - Builds Docker images
+  - Starts stack
+  - Runs health checks
+  - Runs smoke tests
+```
+
+The local script does not call the Jenkinsfile. Jenkins reads the Jenkinsfile directly from the GitHub repository.
+
+---
+
+## Jenkins Local Setup Notes
+
+Jenkins can be run locally using Docker:
+
+```bash
+docker run -d \
+  --name jenkins-tracenet \
+  -p 8089:8080 \
+  -p 50000:50000 \
+  -v jenkins_home:/var/jenkins_home \
+  jenkins/jenkins:lts
+```
+
+Jenkins UI can then be opened at:
+
+```text
+http://localhost:8089
+```
+
+The initial admin password can be retrieved using:
+
+```bash
+docker exec jenkins-tracenet cat /var/jenkins_home/secrets/initialAdminPassword
+```
+
+To run the TraceNet pipeline in Jenkins:
+
+```text
+Create a new Pipeline job
+Choose Pipeline script from SCM
+Select Git
+Paste the GitHub repository URL
+Set branch to main
+Set script path to Jenkinsfile
+Run Build Now
+```
+
+Important note:
+
+```text
+For the Jenkinsfile to run Docker commands, the Jenkins agent must have Docker and Docker Compose available.
+```
+
+If Jenkins is running inside Docker, Docker socket access or a properly configured Docker-enabled Jenkins agent may be needed.
+
+---
+
+## Final DevOps Status
+
+The TraceNet DevOps setup now includes:
+
+```text
+Dockerfiles for all services
+Root Docker Compose orchestration
+Dockerized PostgreSQL
+Database initialization script
+Environment-variable based service configuration
+Docker networking between services
+End-to-end Docker testing
+Jenkins CI/CD pipeline definition
+Local CI build script
+Gateway health checks
+Auth smoke test
+Trace generation smoke test
+Analytics smoke test
+```
+
+This makes TraceNet a deployable, CI/CD-ready microservices project instead of only a locally-run Spring Boot application.
+
+---
+
+## Resume Description for Docker and Jenkins Work
+
+```text
+Containerized all TraceNet microservices using Docker and orchestrated the full platform with Docker Compose, including PostgreSQL, API Gateway, auth, trace ingestion, query, analytics, alerting, and demo services.
+
+Implemented Docker-friendly environment configuration for service discovery, database connectivity, and inter-service communication across containers.
+
+Created a Jenkins CI/CD pipeline to build all Maven services, build Docker images, start the Compose stack, and run health and smoke tests for authentication, trace generation, and analytics.
+
+Added a local CI build script to validate all services and Docker images before pushing changes to GitHub.
+```
