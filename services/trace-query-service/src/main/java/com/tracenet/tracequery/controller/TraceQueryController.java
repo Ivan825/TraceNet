@@ -19,22 +19,29 @@ public class TraceQueryController {
     }
 
     @GetMapping("/{traceId}")
-    public List<Map<String, Object>> getTraceById(@PathVariable String traceId) {
-        return traceSpanRepository.findByTraceIdOrderByCreatedAtAsc(traceId)
+    public List<Map<String, Object>> getTraceById(
+            @RequestHeader(value = "X-Org-Id", required = false) String orgId,
+            @PathVariable String traceId
+    ) {
+        return traceSpanRepository.findByTraceIdAndOrgIdOrderByCreatedAtAsc(traceId, resolveOrgId(orgId))
                 .stream()
                 .map(this::toResponse)
                 .toList();
     }
 
     @GetMapping("/{traceId}/summary")
-    public Map<String, Object> getTraceSummary(@PathVariable String traceId) {
-        List<TraceSpan> traceSpans = traceSpanRepository.findByTraceIdOrderByCreatedAtAsc(traceId);
+    public Map<String, Object> getTraceSummary(
+            @RequestHeader(value = "X-Org-Id", required = false) String orgId,
+            @PathVariable String traceId
+    ) {
+        List<TraceSpan> traceSpans =
+                traceSpanRepository.findByTraceIdAndOrgIdOrderByCreatedAtAsc(traceId, resolveOrgId(orgId));
 
         if (traceSpans.isEmpty()) {
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("traceId", traceId);
             response.put("status", "NOT_FOUND");
-            response.put("message", "No spans found for this traceId");
+            response.put("message", "No spans found for this traceId in this organization");
             return response;
         }
 
@@ -79,6 +86,7 @@ public class TraceQueryController {
 
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("traceId", traceId);
+        summary.put("orgId", resolveOrgId(orgId));
         summary.put("status", hasFailure ? "FAILED" : "SUCCESS");
         summary.put("totalSpans", traceSpans.size());
         summary.put("successCount", successCount);
@@ -101,8 +109,11 @@ public class TraceQueryController {
     }
 
     @GetMapping("/errors")
-    public List<Map<String, Object>> getErrorTraces() {
-        return traceSpanRepository.findByStatusCodeGreaterThanEqualOrderByCreatedAtDesc(500)
+    public List<Map<String, Object>> getErrorTraces(
+            @RequestHeader(value = "X-Org-Id", required = false) String orgId
+    ) {
+        return traceSpanRepository
+                .findByOrgIdAndStatusCodeGreaterThanEqualOrderByCreatedAtDesc(resolveOrgId(orgId), 500)
                 .stream()
                 .map(this::toResponse)
                 .toList();
@@ -110,26 +121,40 @@ public class TraceQueryController {
 
     @GetMapping("/slow")
     public List<Map<String, Object>> getSlowTraces(
+            @RequestHeader(value = "X-Org-Id", required = false) String orgId,
             @RequestParam(value = "threshold", defaultValue = "1000") Long threshold
     ) {
-        return traceSpanRepository.findByLatencyMsGreaterThanEqualOrderByLatencyMsDesc(threshold)
+        return traceSpanRepository
+                .findByOrgIdAndLatencyMsGreaterThanEqualOrderByLatencyMsDesc(resolveOrgId(orgId), threshold)
                 .stream()
                 .map(this::toResponse)
                 .toList();
     }
 
     @GetMapping("/service/{serviceName}")
-    public List<Map<String, Object>> getTracesByService(@PathVariable String serviceName) {
-        return traceSpanRepository.findByServiceNameOrderByCreatedAtDesc(serviceName)
+    public List<Map<String, Object>> getTracesByService(
+            @RequestHeader(value = "X-Org-Id", required = false) String orgId,
+            @PathVariable String serviceName
+    ) {
+        return traceSpanRepository
+                .findByOrgIdAndServiceNameOrderByCreatedAtDesc(resolveOrgId(orgId), serviceName)
                 .stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    private String resolveOrgId(String orgId) {
+        if (orgId == null || orgId.isBlank()) {
+            return "unknown-org";
+        }
+        return orgId;
     }
 
     private Map<String, Object> toResponse(TraceSpan span) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("id", span.getId());
         response.put("traceId", span.getTraceId());
+        response.put("orgId", span.getOrgId());
         response.put("serviceName", span.getServiceName());
         response.put("endpoint", span.getEndpoint());
         response.put("httpMethod", span.getHttpMethod());

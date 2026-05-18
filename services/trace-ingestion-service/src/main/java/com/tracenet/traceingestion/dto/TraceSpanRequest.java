@@ -3,6 +3,7 @@ package com.tracenet.traceingestion.dto;
 public class TraceSpanRequest {
 
     private String traceId;
+    private String orgId;
     private String serviceName;
     private String endpoint;
     private String httpMethod;
@@ -13,30 +14,20 @@ public class TraceSpanRequest {
     public TraceSpanRequest() {
     }
 
-    public TraceSpanRequest(
-            String traceId,
-            String serviceName,
-            String endpoint,
-            String httpMethod,
-            Integer statusCode,
-            Long latencyMs,
-            String errorMessage
-    ) {
-        this.traceId = traceId;
-        this.serviceName = serviceName;
-        this.endpoint = endpoint;
-        this.httpMethod = httpMethod;
-        this.statusCode = statusCode;
-        this.latencyMs = latencyMs;
-        this.errorMessage = errorMessage;
-    }
-
     public String getTraceId() {
         return traceId;
     }
 
     public void setTraceId(String traceId) {
         this.traceId = traceId;
+    }
+
+    public String getOrgId() {
+        return orgId;
+    }
+
+    public void setOrgId(String orgId) {
+        this.orgId = orgId;
     }
 
     public String getServiceName() {
@@ -52,8 +43,8 @@ public class TraceSpanRequest {
     }
 
     public void setEndpoint(String endpoint) {
-        this.endpoint = endpoint;
-    }
+    this.endpoint = endpoint;
+}
 
     public String getHttpMethod() {
         return httpMethod;

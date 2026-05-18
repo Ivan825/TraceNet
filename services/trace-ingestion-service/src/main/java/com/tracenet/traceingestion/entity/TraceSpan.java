@@ -16,6 +16,9 @@ public class TraceSpan {
     @Column(name = "trace_id", nullable = false)
     private String traceId;
 
+    @Column(name = "org_id", nullable = false)
+    private String orgId;
+
     @Column(name = "service_name", nullable = false)
     private String serviceName;
 
@@ -42,6 +45,7 @@ public class TraceSpan {
 
     public TraceSpan(
             String traceId,
+            String orgId,
             String serviceName,
             String endpoint,
             String httpMethod,
@@ -51,6 +55,7 @@ public class TraceSpan {
             Instant createdAt
     ) {
         this.traceId = traceId;
+        this.orgId = orgId;
         this.serviceName = serviceName;
         this.endpoint = endpoint;
         this.httpMethod = httpMethod;
@@ -68,63 +73,35 @@ public class TraceSpan {
         return traceId;
     }
 
-    public void setTraceId(String traceId) {
-        this.traceId = traceId;
+    public String getOrgId() {
+        return orgId;
     }
 
     public String getServiceName() {
         return serviceName;
     }
 
-    public void setServiceName(String serviceName) {
-        this.serviceName = serviceName;
-    }
-
     public String getEndpoint() {
         return endpoint;
-    }
-
-    public void setEndpoint(String endpoint) {
-        this.endpoint = endpoint;
     }
 
     public String getHttpMethod() {
         return httpMethod;
     }
 
-    public void setHttpMethod(String httpMethod) {
-        this.httpMethod = httpMethod;
-    }
-
     public Integer getStatusCode() {
         return statusCode;
-    }
-
-    public void setStatusCode(Integer statusCode) {
-        this.statusCode = statusCode;
     }
 
     public Long getLatencyMs() {
         return latencyMs;
     }
 
-    public void setLatencyMs(Long latencyMs) {
-        this.latencyMs = latencyMs;
-    }
-
     public String getErrorMessage() {
         return errorMessage;
     }
 
-    public void setErrorMessage(String errorMessage) {
-        this.errorMessage = errorMessage;
-    }
-
     public Instant getCreatedAt() {
         return createdAt;
-    }
-
-    public void setCreatedAt(Instant createdAt) {
-        this.createdAt = createdAt;
     }
 }

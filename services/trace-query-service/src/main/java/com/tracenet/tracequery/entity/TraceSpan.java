@@ -15,6 +15,9 @@ public class TraceSpan {
     @Column(name = "trace_id", nullable = false)
     private String traceId;
 
+    @Column(name = "org_id", nullable = false)
+    private String orgId;
+
     @Column(name = "service_name", nullable = false)
     private String serviceName;
 
@@ -45,6 +48,10 @@ public class TraceSpan {
 
     public String getTraceId() {
         return traceId;
+    }
+
+    public String getOrgId() {
+        return orgId;
     }
 
     public String getServiceName() {

@@ -21,9 +21,23 @@ public class TraceIngestionController {
     }
 
     @PostMapping("/spans")
-    public ResponseEntity<Map<String, Object>> ingestSpan(@RequestBody TraceSpanRequest request) {
+    public ResponseEntity<Map<String, Object>> ingestSpan(
+            @RequestHeader(value = "X-Org-Id", required = false) String orgIdFromHeader,
+            @RequestBody TraceSpanRequest request
+    ) {
+        String finalOrgId = orgIdFromHeader;
+
+        if (finalOrgId == null || finalOrgId.isBlank()) {
+            finalOrgId = request.getOrgId();
+        }
+
+        if (finalOrgId == null || finalOrgId.isBlank()) {
+            finalOrgId = "unknown-org";
+        }
+
         TraceSpan span = new TraceSpan(
                 request.getTraceId(),
+                finalOrgId,
                 request.getServiceName(),
                 request.getEndpoint(),
                 request.getHttpMethod(),
@@ -39,6 +53,7 @@ public class TraceIngestionController {
         response.put("message", "Trace span ingested successfully");
         response.put("id", savedSpan.getId());
         response.put("traceId", savedSpan.getTraceId());
+        response.put("orgId", savedSpan.getOrgId());
         response.put("serviceName", savedSpan.getServiceName());
 
         return ResponseEntity.ok(response);

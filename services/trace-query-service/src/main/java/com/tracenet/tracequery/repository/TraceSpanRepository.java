@@ -8,11 +8,11 @@ import java.util.UUID;
 
 public interface TraceSpanRepository extends JpaRepository<TraceSpan, UUID> {
 
-    List<TraceSpan> findByTraceIdOrderByCreatedAtAsc(String traceId);
+    List<TraceSpan> findByTraceIdAndOrgIdOrderByCreatedAtAsc(String traceId, String orgId);
 
-    List<TraceSpan> findByStatusCodeGreaterThanEqualOrderByCreatedAtDesc(Integer statusCode);
+    List<TraceSpan> findByOrgIdAndStatusCodeGreaterThanEqualOrderByCreatedAtDesc(String orgId, Integer statusCode);
 
-    List<TraceSpan> findByLatencyMsGreaterThanEqualOrderByLatencyMsDesc(Long latencyMs);
+    List<TraceSpan> findByOrgIdAndLatencyMsGreaterThanEqualOrderByLatencyMsDesc(String orgId, Long latencyMs);
 
-    List<TraceSpan> findByServiceNameOrderByCreatedAtDesc(String serviceName);
+    List<TraceSpan> findByOrgIdAndServiceNameOrderByCreatedAtDesc(String orgId, String serviceName);
 }
